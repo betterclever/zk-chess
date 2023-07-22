@@ -62,6 +62,66 @@ export class ChessBoard extends Struct({
     return currentPositionPiece;
   }
 
+  // returns the coordinates of a first occurence of a piece
+  findPieceCoordinates(piece: Field): [UInt32, UInt32] {
+    // coodinates 100, 100 means not found
+    let pieceX = UInt32.from(100);
+    let pieceY = UInt32.from(100);
+
+    let pieceFound = Bool(false);
+    let pieceToFind = piece;
+
+    // find the piece
+    for (let i = 0; i < 8; i++) {
+      pieceFound = Provable.if(
+        this.value[i][0].equals(pieceToFind),
+        Bool(true),
+        pieceFound
+      );
+      pieceX = Provable.if(
+        this.value[i][0].equals(pieceToFind),
+        UInt32.from(i),
+        pieceX
+      );
+      pieceY = Provable.if(
+        this.value[i][0].equals(pieceToFind),
+        UInt32.from(0),
+        pieceY
+      );
+    }
+
+    pieceFound.assertTrue('Piece not found');
+    return [pieceX, pieceY];
+  }
+
+  findWhiteKingCoordinates(): [UInt32, UInt32] {
+    // coodinates 100, 100 means not found
+    let kingX = UInt32.from(100);
+    let kingY = UInt32.from(100);
+
+    let kingPiece = Field.from(12);
+    let kingCoordinates = this.findPieceCoordinates(kingPiece);
+
+    kingX = kingCoordinates[0];
+    kingY = kingCoordinates[1];
+
+    return [kingX, kingY];
+  }
+
+  findBlackKingCoordinates(): [UInt32, UInt32] {
+    // coodinates 100, 100 means not found
+    let kingX = UInt32.from(100);
+    let kingY = UInt32.from(100);
+
+    let kingPiece = Field.from(6);
+    let kingCoordinates = this.findPieceCoordinates(kingPiece);
+
+    kingX = kingCoordinates[0];
+    kingY = kingCoordinates[1];
+
+    return [kingX, kingY];
+  }
+
   // Change coordinate and return a new board
   changeCoordinate(
     currentX: UInt32,
@@ -430,6 +490,328 @@ export class ChessBoard extends Struct({
       .and(isValidMoveForward.or(isValidMoveForward2).or(isPawnKilling));
   }
 
+  checkValidPieceMove(
+    currentX: UInt32,
+    currentY: UInt32,
+    newX: UInt32,
+    newY: UInt32
+  ) {
+    let validRookMove = this.checkValidRookMove(currentX, currentY, newX, newY);
+
+    let validBishopMove = this.checkValidBishopMove(
+      currentX,
+      currentY,
+      newX,
+      newY
+    );
+
+    let validQueenMove = validRookMove.or(validBishopMove);
+    let validKingMove = this.checkValidKingMove(currentX, currentY, newX, newY);
+
+    let validKnightMove = this.checkValidKnightMove(
+      currentX,
+      currentY,
+      newX,
+      newY
+    );
+
+    let validPawnMove = this.checkValidPawnMove(currentX, currentY, newX, newY);
+
+    // validate piece and move combination and return true if valid
+    let currentPositionPiece = this.findPieceAtCoordinates(currentX, currentY);
+
+    const isPawnSupposedToMoveAndIsValid = Provable.if(
+      currentPositionPiece
+        .equals(Field(1))
+        .or(currentPositionPiece.equals(Field(7))),
+      validPawnMove,
+      Bool(true)
+    );
+
+    const isKingSupposedToMoveAndIsValid = Provable.if(
+      currentPositionPiece
+        .equals(Field(6))
+        .or(currentPositionPiece.equals(Field(12))),
+      validKingMove,
+      Bool(true)
+    );
+
+    const isRookSupposedToMoveAndIsValid = Provable.if(
+      currentPositionPiece
+        .equals(Field(4))
+        .or(currentPositionPiece.equals(Field(10))),
+      validRookMove,
+      Bool(true)
+    );
+
+    const isBishopSupposedToMoveAndIsValid = Provable.if(
+      currentPositionPiece
+        .equals(Field(3))
+        .or(currentPositionPiece.equals(Field(9))),
+      validBishopMove,
+      Bool(true)
+    );
+
+    const isKnightSupposedToMoveAndIsValid = Provable.if(
+      currentPositionPiece
+        .equals(Field(2))
+        .or(currentPositionPiece.equals(Field(8))),
+      validKnightMove,
+      Bool(true)
+    );
+
+    const isQueenSupposedToMoveAndIsValid = Provable.if(
+      currentPositionPiece
+        .equals(Field(5))
+        .or(currentPositionPiece.equals(Field(11))),
+      validQueenMove,
+      Bool(true)
+    );
+
+    Provable.log('validRookMove', validRookMove);
+    Provable.log('validBishopMove', validBishopMove);
+    Provable.log('validQueenMove', validQueenMove);
+    Provable.log('validKingMove', validKingMove);
+    Provable.log('validKnightMove', validKnightMove);
+    Provable.log('validPawnMove', validPawnMove);
+
+    Provable.log('currentPositionPiece', currentPositionPiece);
+    Provable.log('board', this.value);
+
+    return isPawnSupposedToMoveAndIsValid
+      .and(isKingSupposedToMoveAndIsValid)
+      .and(isRookSupposedToMoveAndIsValid)
+      .and(isBishopSupposedToMoveAndIsValid)
+      .and(isKnightSupposedToMoveAndIsValid)
+      .and(isQueenSupposedToMoveAndIsValid);
+  }
+
+  // king is in check if any of the pieces can kill in the current board position
+  checkIfKingInCheck(piece: Field): Bool {
+    piece
+      .equals(Field(12))
+      .or(piece.equals(Field(6)))
+      .assertTrue('Piece is not a king');
+
+    // find the king
+    let kingCoordinates = this.findPieceCoordinates(piece);
+    let kingX = kingCoordinates[0];
+    let kingY = kingCoordinates[1];
+
+    // check all the pieces if they can kill the king
+    let canKingBeKilled = Bool(false);
+
+    for (let i = 0; i < 8; i++) {
+      for (let j = 0; j < 8; i++) {
+        let canPieceKillKing = this.checkValidPieceMove(
+          UInt32.from(i),
+          UInt32.from(j),
+          kingX,
+          kingY
+        );
+
+        canKingBeKilled = canKingBeKilled.or(canPieceKillKing);
+      }
+    }
+
+    return canKingBeKilled;
+  }
+
+  checkIfKingCanMoveToAnyValidPlace(): Bool {
+    // find the king
+    let kingCoordinates = this.findWhiteKingCoordinates();
+    let kingX = kingCoordinates[0];
+    let kingY = kingCoordinates[1];
+
+    // check around king for valid coordinates
+    let canKingMove = Bool(false);
+
+    // check if king can move to any of the valid places
+    let canKingMoveToTopLeft = this.checkValidKingMove(
+      kingX,
+      kingY,
+      kingX.sub(UInt32.from(1)),
+      kingY.sub(UInt32.from(1))
+    );
+
+    let canKingMoveToTop = this.checkValidKingMove(
+      kingX,
+      kingY,
+      kingX,
+      kingY.sub(UInt32.from(1))
+    );
+
+    let canKingMoveToTopRight = this.checkValidKingMove(
+      kingX,
+      kingY,
+      kingX.add(UInt32.from(1)),
+      kingY.sub(UInt32.from(1))
+    );
+
+    let canKingMoveToLeft = this.checkValidKingMove(
+      kingX,
+      kingY,
+      kingX.sub(UInt32.from(1)),
+      kingY
+    );
+
+    let canKingMoveToRight = this.checkValidKingMove(
+      kingX,
+      kingY,
+      kingX.add(UInt32.from(1)),
+      kingY
+    );
+
+    let canKingMoveToBottomLeft = this.checkValidKingMove(
+      kingX,
+      kingY,
+      kingX.sub(UInt32.from(1)),
+      kingY.add(UInt32.from(1))
+    );
+
+    let canKingMoveToBottom = this.checkValidKingMove(
+      kingX,
+      kingY,
+      kingX,
+      kingY.add(UInt32.from(1))
+    );
+
+    let canKingMoveToBottomRight = this.checkValidKingMove(
+      kingX,
+      kingY,
+      kingX.add(UInt32.from(1)),
+      kingY.add(UInt32.from(1))
+    );
+
+    canKingMove = canKingMoveToTopLeft
+      .or(canKingMoveToTop)
+      .or(canKingMoveToTopRight)
+      .or(canKingMoveToLeft)
+      .or(canKingMoveToRight)
+      .or(canKingMoveToBottomLeft)
+      .or(canKingMoveToBottom)
+      .or(canKingMoveToBottomRight);
+
+    return canKingMove;
+  }
+
+  checkIfAnyPieceCanKillThePieceThatIsKillingTheKing(): Bool {
+    // find the piece that is killing the king
+    let kingCoordinates = this.findWhiteKingCoordinates();
+    let kingX = kingCoordinates[0];
+    let kingY = kingCoordinates[1];
+
+    // check all the pieces if they can kill the king
+    let canKingBeKilled = Bool(false);
+    let kingKillingPieceCoordinateX: UInt32 = UInt32.from(100);
+    let kingKillingPieceCoordinateY: UInt32 = UInt32.from(100);
+
+    for (let i = 0; i < 8; i++) {
+      for (let j = 0; j < 8; i++) {
+        let canPieceKillKing = this.checkValidPieceMove(
+          UInt32.from(i),
+          UInt32.from(j),
+          kingX,
+          kingY
+        );
+
+        kingKillingPieceCoordinateX = Provable.if(
+          canPieceKillKing,
+          UInt32.from(i),
+          kingKillingPieceCoordinateX
+        );
+
+        kingKillingPieceCoordinateY = Provable.if(
+          canPieceKillKing,
+          UInt32.from(j),
+          kingKillingPieceCoordinateY
+        );
+
+        canKingBeKilled = canKingBeKilled.or(canPieceKillKing);
+      }
+    }
+
+    // so we now have the coordinates of the piece that is killing the king
+    // now we need to test validity of move for all the pieces to see if they can kill the piece that is killing the king
+    let canAnyPieceKillThePieceThatIsKillingTheKing = Bool(false);
+
+    // check if any piece can kill the piece that is killing the king
+    for (let i = 0; i < 8; i++) {
+      for (let j = 0; j < 8; i++) {
+        let canPieceKillThePieceKillingTheKing = this.checkValidPieceMove(
+          UInt32.from(i),
+          UInt32.from(j),
+          kingKillingPieceCoordinateX,
+          kingKillingPieceCoordinateY
+        );
+
+        canAnyPieceKillThePieceThatIsKillingTheKing =
+          canAnyPieceKillThePieceThatIsKillingTheKing.or(
+            canPieceKillThePieceKillingTheKing
+          );
+      }
+    }
+
+    // if any piece can kill the piece that is killing the king then return true
+    return canAnyPieceKillThePieceThatIsKillingTheKing;
+  }
+
+  checkIfAnyPieceCanComeInBetweenThePieceThatIsKillingTheKing(): Bool {
+    // find the piece that is killing the king
+    let kingCoordinates = this.findWhiteKingCoordinates();
+    let kingX = kingCoordinates[0];
+    let kingY = kingCoordinates[1];
+
+    // check all the pieces if they can kill the king
+    let canKingBeKilled = Bool(false);
+    let kingKillingPieceCoordinateX: UInt32 = UInt32.from(100);
+    let kingKillingPieceCoordinateY: UInt32 = UInt32.from(100);
+
+    for (let i = 0; i < 8; i++) {
+      for (let j = 0; j < 8; i++) {
+        let canPieceKillKing = this.checkValidPieceMove(
+          UInt32.from(i),
+          UInt32.from(j),
+          kingX,
+          kingY
+        );
+
+        kingKillingPieceCoordinateX = Provable.if(
+          canPieceKillKing,
+          UInt32.from(i),
+          kingKillingPieceCoordinateX
+        );
+
+        kingKillingPieceCoordinateY = Provable.if(
+          canPieceKillKing,
+          UInt32.from(j),
+          kingKillingPieceCoordinateY
+        );
+
+        canKingBeKilled = canKingBeKilled.or(canPieceKillKing);
+      }
+    }
+  }
+
+  // king is in checkmate if king is in check and there's no valid move for the king
+  checkIfKingInCheckMate(): Bool {
+    // find the king
+    let kingCoordinates = this.findWhiteKingCoordinates();
+    let kingX = kingCoordinates[0];
+    let kingY = kingCoordinates[1];
+
+    // check if king is in check
+    let isKingInCheck = this.checkIfKingInCheck();
+    // check if king can move to any of the valid places
+    let canKingMove = this.checkIfKingCanMoveToAnyValidPlace();
+
+    // check if any other piece can kill the piece that is killing the king
+    let canAnyPieceKillThePieceThatIsKillingTheKing =
+      this.checkIfAnyPieceCanKillThePieceThatIsKillingTheKing();
+
+    // check if any other piece can come in between the piece that is killing the king
+  }
+
   hash() {
     return Poseidon.hash(this.value.flat());
   }
@@ -534,129 +916,14 @@ export default class ChessZkApp extends SmartContract {
 
     // Step 2.2: Validate that the move is valid for the piece. To do that we actually have to run the validtiy function for all types of pieces
     // and then do an 'and' operation to find if it is actually valid for the piece we are working on
-    let validRookMove = currentBoard.checkValidRookMove(
-      currentX,
-      currentY,
-      newX,
-      newY
-    );
-    let validBishopMove = currentBoard.checkValidBishopMove(
+    let isMoveValid = currentBoard.checkValidPieceMove(
       currentX,
       currentY,
       newX,
       newY
     );
 
-    let validQueenMove = validRookMove.or(validBishopMove);
-    let validKingMove = currentBoard.checkValidKingMove(
-      currentX,
-      currentY,
-      newX,
-      newY
-    );
-
-    let validKnightMove = currentBoard.checkValidKnightMove(
-      currentX,
-      currentY,
-      newX,
-      newY
-    );
-
-    let validPawnMove = currentBoard.checkValidPawnMove(
-      currentX,
-      currentY,
-      newX,
-      newY
-    );
-
-    Provable.log('validRookMove', validRookMove);
-    Provable.log('validBishopMove', validBishopMove);
-    Provable.log('validQueenMove', validQueenMove);
-    Provable.log('validKingMove', validKingMove);
-    Provable.log('validKnightMove', validKnightMove);
-    Provable.log('validPawnMove', validPawnMove);
-
-    Provable.log('currentPositionPiece', currentPositionPiece);
-    Provable.log('board', currentBoard.value);
-
-    // assert that the move is valid for the piece
-    const isPawnSupposedToMoveAndIsValid = Provable.if(
-      currentPositionPiece
-        .equals(Field(1))
-        .or(currentPositionPiece.equals(Field(7))),
-      validPawnMove,
-      Bool(true)
-    );
-
-    isPawnSupposedToMoveAndIsValid.assertEquals(
-      Bool(true),
-      'pawn move is valid'
-    );
-
-    const isKnightSupposedToMoveAndIsValid = Provable.if(
-      currentPositionPiece
-        .equals(Field(2))
-        .or(currentPositionPiece.equals(Field(8))),
-      validKnightMove,
-      Bool(true)
-    );
-
-    isKnightSupposedToMoveAndIsValid.assertEquals(
-      Bool(true),
-      'knight move is valid'
-    );
-
-    const isBishopSupposedToMoveAndIsValid = Provable.if(
-      currentPositionPiece
-        .equals(Field(3))
-        .or(currentPositionPiece.equals(Field(9))),
-      validBishopMove,
-      Bool(true)
-    );
-
-    isBishopSupposedToMoveAndIsValid.assertEquals(
-      Bool(true),
-      'bishop move is valid'
-    );
-
-    const isRookSupposedToMoveAndIsValid = Provable.if(
-      currentPositionPiece
-        .equals(Field(4))
-        .or(currentPositionPiece.equals(Field(10))),
-      validRookMove,
-      Bool(true)
-    );
-
-    isRookSupposedToMoveAndIsValid.assertEquals(
-      Bool(true),
-      'rook move is valid'
-    );
-
-    const isQueenSupposedToMoveAndIsValid = Provable.if(
-      currentPositionPiece
-        .equals(Field(5))
-        .or(currentPositionPiece.equals(Field(11))),
-      validQueenMove,
-      Bool(true)
-    );
-
-    isQueenSupposedToMoveAndIsValid.assertEquals(
-      Bool(true),
-      'queen move is valid'
-    );
-
-    const isKingSupposedToMoveAndIsValid = Provable.if(
-      currentPositionPiece
-        .equals(Field(6))
-        .or(currentPositionPiece.equals(Field(12))),
-      validKingMove,
-      Bool(true)
-    );
-
-    isKingSupposedToMoveAndIsValid.assertEquals(
-      Bool(true),
-      'king move is valid'
-    );
+    isMoveValid.assertTrue('move is valid');
 
     // Move the piece
     // update the board

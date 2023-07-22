@@ -165,8 +165,15 @@ describe('Chess', () => {
       ).toBeTruthy();
     }
 
+    const txn5 = await Mina.transaction(senderAccount, () => {
+      zkApp.reset(gamePlayer1.toPublicKey(), gamePlayer2.toPublicKey());
+    });
+
+    await txn5.prove();
+    await txn5.sign([senderKey]).send();
+
     const hash3 = zkApp.chessHash.get().toString();
-    expect(hash3).toEqual(updatedBoard.hash().toString());
+    expect(hash3).toEqual(ChessBoard.default().hash().toString());
   });
 
   // it('correctly updates the num state on the `Add` smart contract', async () => {
