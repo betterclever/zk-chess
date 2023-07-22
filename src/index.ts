@@ -1,3 +1,3 @@
-import { Add } from './Chess.js';
+import { ChessZkApp } from './Chess.js';
 
-export { Add };
+export { ChessZkApp };
