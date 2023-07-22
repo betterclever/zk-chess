@@ -48,6 +48,36 @@ export class ChessBoard extends Struct({
     return currentPositionPiece;
   }
 
+  // Change coordinate and return a new board
+  changeCoordinate(
+    currentX: UInt32,
+    currentY: UInt32,
+    newX: UInt32,
+    newY: UInt32
+  ): ChessBoard {
+    let currentPositionPiece = this.findPieceAtCoordinates(currentX, currentY);
+
+    for (let i = 0; i < 8; i++) {
+      for (let j = 0; j < 8; i++) {
+        // make current position zero
+        this.value[i][j] = Provable.if(
+          currentX.equals(UInt32.from(i)).and(currentY.equals(UInt32.from(j))),
+          Field(0),
+          this.value[i][j]
+        );
+
+        // make new position the current piece
+        this.value[i][j] = Provable.if(
+          newX.equals(UInt32.from(i)).and(newY.equals(UInt32.from(j))),
+          currentPositionPiece,
+          this.value[i][j]
+        );
+      }
+    }
+
+    return this;
+  }
+
   checkIfRookPathClear(
     curX: UInt32,
     curY: UInt32,
@@ -108,6 +138,44 @@ export class ChessBoard extends Struct({
     return isEmpty.or(isDifferentColor);
   }
 
+  checkValidKingMove(
+    curX: UInt32,
+    curY: UInt32,
+    newX: UInt32,
+    newY: UInt32
+  ): Bool {
+    let isAtSamePosition = curX.equals(newX).and(curY.equals(newY));
+    let newXInsideBoard = newX
+      .greaterThanOrEqual(UInt32.from(0))
+      .and(newX.lessThanOrEqual(UInt32.from(7)));
+    let newYInsideBoard = newY
+      .greaterThanOrEqual(UInt32.from(0))
+      .and(newY.lessThanOrEqual(UInt32.from(7)));
+
+    // the diff between both coordinates can be atmost 1
+    let xDiff1 = curX.sub(newX);
+    let xDiff2 = newX.sub(curX);
+    let yDiff1 = curY.sub(newY);
+    let yDiff2 = newY.sub(curY);
+
+    let xDiffAbs = Provable.if(newX.greaterThan(curX), xDiff2, xDiff1);
+    let yDiffAbs = Provable.if(newY.greaterThan(curY), yDiff2, yDiff1);
+
+    let isDiffAtMostOne = Provable.if(
+      xDiffAbs
+        .lessThanOrEqual(UInt32.from(1))
+        .and(yDiffAbs.lessThanOrEqual(UInt32.from(1))),
+      Bool(true),
+      Bool(false)
+    );
+
+    return isAtSamePosition
+      .not()
+      .and(newXInsideBoard)
+      .and(newYInsideBoard)
+      .and(isDiffAtMostOne);
+  }
+
   checkValidRookMove(
     curX: UInt32,
     curY: UInt32,
@@ -140,7 +208,9 @@ export class ChessBoard extends Struct({
     // if there's no piece at newX and newY then the rook should be able to move there
     let newPositionFinalPlacementValid = this.checkFinalPlacement(newX, newY);
 
-    return newXInsideBoard
+    return isAtSamePosition
+      .not()
+      .and(newXInsideBoard)
       .and(newYInsideBoard)
       .and(onlyOneOfTheCoordinatesChanged)
       .and(pathIsClear)
@@ -231,6 +301,91 @@ export class ChessBoard extends Struct({
       .and(isSameDiff)
       .and(pathIsClear)
       .and(finalPlacementValid);
+  }
+
+  checkValidKnightMove(
+    curX: UInt32,
+    curY: UInt32,
+    newX: UInt32,
+    newY: UInt32
+  ): Bool {
+    let isAtSamePosition = curX.equals(newX).and(curY.equals(newY));
+    let newXInsideBoard = newX
+      .greaterThanOrEqual(UInt32.from(0))
+      .and(newX.lessThanOrEqual(UInt32.from(7)));
+    let newYInsideBoard = newY
+      .greaterThanOrEqual(UInt32.from(0))
+      .and(newY.lessThanOrEqual(UInt32.from(7)));
+
+    let xDiff1 = curX.sub(newX);
+    let xDiff2 = newX.sub(curX);
+    let yDiff1 = curY.sub(newY);
+    let yDiff2 = newY.sub(curY);
+
+    let xDiffAbs = Provable.if(newX.greaterThan(curX), xDiff2, xDiff1);
+    let yDiffAbs = Provable.if(newY.greaterThan(curY), yDiff2, yDiff1);
+
+    // 2. alidate if they are +1 and +2 or +2 and +1
+    let isDiffValid = xDiffAbs
+      .equals(UInt32.from(1))
+      .and(yDiffAbs.equals(UInt32.from(2)))
+      .or(xDiffAbs.equals(UInt32.from(2)).and(yDiffAbs.equals(UInt32.from(1))));
+
+    // 3. validate if knight can move at this place by either killing or moving to an empty place
+    // if there's a piece at newX and newY then it should be of different color and the knight should be able to kill it
+    // if there's no piece at newX and newY then the knight should be able to move there
+    let finalPlacementValid = this.checkFinalPlacement(newX, newY);
+
+    return newXInsideBoard
+      .and(newYInsideBoard)
+      .and(isDiffValid)
+      .and(finalPlacementValid);
+  }
+
+  checkValidPawnMove(
+    curX: UInt32,
+    curY: UInt32,
+    newX: UInt32,
+    newY: UInt32
+  ): Bool {
+    let isAtSamePosition = curX.equals(newX).and(curY.equals(newY));
+    let newXInsideBoard = newX
+      .greaterThanOrEqual(UInt32.from(0))
+      .and(newX.lessThanOrEqual(UInt32.from(7)));
+
+    let newYInsideBoard = newY
+      .greaterThanOrEqual(UInt32.from(0))
+      .and(newY.lessThanOrEqual(UInt32.from(7)));
+
+    // check if pawn is moving forward
+    let isValidMoveForward = curX
+      .equals(newX)
+      .and(curY.add(UInt32.from(1)).equals(newY));
+    let isValidMoveForward2 = curX.equals(newX).and(
+      curY
+        .add(UInt32.from(2))
+        .equals(newY)
+        .and(curY.equals(UInt32.from(1)))
+    );
+
+    // check if pawn is killing
+    let isPawnKilling = curX
+      .add(UInt32.from(1))
+      .equals(newX)
+      .or(curX.sub(UInt32.from(1)).equals(newX))
+      .and(curY.add(UInt32.from(1)).equals(newY));
+    let isFinalPlacementValid = this.checkFinalPlacement(newX, newY);
+
+    return isAtSamePosition
+      .not()
+      .and(newXInsideBoard)
+      .and(newYInsideBoard)
+      .and(
+        isValidMoveForward
+          .or(isValidMoveForward2)
+          .or(isPawnKilling)
+          .and(isFinalPlacementValid)
+      );
   }
 
   hash() {
@@ -339,6 +494,72 @@ export class ChessZkApp extends SmartContract {
       newX,
       newY
     );
+
+    let validQueenMove = validRookMove.or(validBishopMove);
+    let validKingMove = currentBoard.checkValidKingMove(
+      currentX,
+      currentY,
+      newX,
+      newY
+    );
+
+    let validKnightMove = currentBoard.checkValidKnightMove(
+      currentX,
+      currentY,
+      newX,
+      newY
+    );
+
+    let validPawnMove = currentBoard.checkValidPawnMove(
+      currentX,
+      currentY,
+      newX,
+      newY
+    );
+
+    // assert that the move is valid for the piece
+    currentPositionPiece
+      .equals(Field(1))
+      .or(currentPositionPiece.equals(Field(7)))
+      .and(validPawnMove)
+      .assertEquals(Bool(true), 'pawn move is valid');
+    currentPositionPiece
+      .equals(Field(2))
+      .or(currentPositionPiece.equals(Field(8)))
+      .and(validKnightMove)
+      .assertEquals(Bool(true), 'knight move is valid');
+    currentPositionPiece
+      .equals(Field(3))
+      .or(currentPositionPiece.equals(Field(9)))
+      .and(validBishopMove)
+      .assertEquals(Bool(true), 'bishop move is valid');
+    currentPositionPiece
+      .equals(Field(4))
+      .or(currentPositionPiece.equals(Field(10)))
+      .and(validRookMove)
+      .assertEquals(Bool(true), 'rook move is valid');
+    currentPositionPiece
+      .equals(Field(5))
+      .or(currentPositionPiece.equals(Field(11)))
+      .and(validQueenMove)
+      .assertEquals(Bool(true), 'queen move is valid');
+    currentPositionPiece
+      .equals(Field(6))
+      .or(currentPositionPiece.equals(Field(12)))
+      .and(validKingMove)
+      .assertEquals(Bool(true), 'king move is valid');
+
+    // Move the piece
+    // update the board
+    let newBoard = currentBoard.changeCoordinate(
+      currentX,
+      currentY,
+      newX,
+      newY
+    );
+
+    // update the hash
+    this.chessHash.set(newBoard.hash());
 
     // check if the move is valid
     // update the board
