@@ -756,6 +756,7 @@ export class ChessBoard extends Struct({
     return canAnyPieceKillThePieceThatIsKillingTheKing;
   }
 
+  // TODO: Fixme. Correct the logic.
   checkIfAnyPieceCanComeInBetweenThePieceThatIsKillingTheKing(): Bool {
     // find the piece that is killing the king
     let kingCoordinates = this.findWhiteKingCoordinates();
@@ -791,17 +792,24 @@ export class ChessBoard extends Struct({
         canKingBeKilled = canKingBeKilled.or(canPieceKillKing);
       }
     }
+
+    return Bool(false);
   }
 
   // king is in checkmate if king is in check and there's no valid move for the king
-  checkIfKingInCheckMate(): Bool {
-    // find the king
-    let kingCoordinates = this.findWhiteKingCoordinates();
-    let kingX = kingCoordinates[0];
-    let kingY = kingCoordinates[1];
+  checkIfKingInCheckMate(piece: Field): Bool {
+    piece
+      .equals(Field(12))
+      .or(piece.equals(Field(6)))
+      .assertTrue('Piece is not a king');
+
+    // // find the king
+    // let kingCoordinates = this.findPieceCoordinates(piece);
+    // let kingX = kingCoordinates[0];
+    // let kingY = kingCoordinates[1];
 
     // check if king is in check
-    let isKingInCheck = this.checkIfKingInCheck();
+    let isKingInCheck = this.checkIfKingInCheck(piece);
     // check if king can move to any of the valid places
     let canKingMove = this.checkIfKingCanMoveToAnyValidPlace();
 
@@ -810,6 +818,14 @@ export class ChessBoard extends Struct({
       this.checkIfAnyPieceCanKillThePieceThatIsKillingTheKing();
 
     // check if any other piece can come in between the piece that is killing the king
+    let canAnyPieceComeInBetweenThePieceThatIsKillingTheKing = Bool(false);
+
+    return isKingInCheck.and(
+      canKingMove
+        .not()
+        .and(canAnyPieceKillThePieceThatIsKillingTheKing.not())
+        .and(canAnyPieceComeInBetweenThePieceThatIsKillingTheKing.not())
+    );
   }
 
   hash() {
