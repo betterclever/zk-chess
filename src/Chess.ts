@@ -62,18 +62,24 @@ export class ChessBoard extends Struct({
       for (let j = 0; j < 8; i++) {
         // check if the piece is between curX and newX
         let isSquareInXPath = Provable.if(
-          curX.lessThan(UInt32.from(i)).and(newX.greaterThan(UInt32.from(i))),
+          curX
+            .lessThan(UInt32.from(i))
+            .and(newX.greaterThan(UInt32.from(i)))
+            .and(curY.equals(newY)),
           Bool(true),
           Bool(false)
         );
         // check if the piece is between curY and newY
         let isSquareInYPath = Provable.if(
-          curY.lessThan(UInt32.from(j)).and(newY.greaterThan(UInt32.from(j))),
+          curY
+            .lessThan(UInt32.from(j))
+            .and(newY.greaterThan(UInt32.from(j)))
+            .and(curX.equals(newX)),
           Bool(true),
           Bool(false)
         );
 
-        let isSquareInPath = isSquareInXPath.and(isSquareInYPath);
+        let isSquareInPath = isSquareInXPath.or(isSquareInYPath);
         // check piece at position
         let pieceAtPosition = this.value[i][j];
         // if there's a piece at positon and isSquareInPath is true then, set isPathClear to false
@@ -88,7 +94,7 @@ export class ChessBoard extends Struct({
     return isPathClear;
   }
 
-  checkIfRookCanMove(newX: UInt32, newY: UInt32): Bool {
+  checkFinalPlacement(newX: UInt32, newY: UInt32): Bool {
     let pieceAtNewPosition = this.findPieceAtCoordinates(newX, newY);
 
     // check if empty
@@ -132,13 +138,53 @@ export class ChessBoard extends Struct({
     // 3. validate if rook can move at this place by either killing or moving to an empty place
     // if there's a piece at newX and newY then it should be of different color and the rook should be able to kill it
     // if there's no piece at newX and newY then the rook should be able to move there
-    let newPositionFinalPlacementValid = this.checkIfRookCanMove(newX, newY);
+    let newPositionFinalPlacementValid = this.checkFinalPlacement(newX, newY);
 
     return newXInsideBoard
       .and(newYInsideBoard)
       .and(onlyOneOfTheCoordinatesChanged)
       .and(pathIsClear)
       .and(newPositionFinalPlacementValid);
+  }
+
+  checkIfDiaognalPathClear(
+    curX: UInt32,
+    curY: UInt32,
+    newX: UInt32,
+    newY: UInt32
+  ): Bool {
+    // check if the path is clear
+    // if the x is same then check if the path is clear in y
+    let isPathClear = Bool(true);
+
+    for (let i = 0; i < 8; i++) {
+      for (let j = 0; j < 8; i++) {
+        // check if the piece is between curX and newX
+        let isSquareInXPath = Provable.if(
+          curX.lessThan(UInt32.from(i)).and(newX.greaterThan(UInt32.from(i))),
+          Bool(true),
+          Bool(false)
+        );
+        // check if the piece is between curY and newY
+        let isSquareInYPath = Provable.if(
+          curY.lessThan(UInt32.from(j)).and(newY.greaterThan(UInt32.from(j))),
+          Bool(true),
+          Bool(false)
+        );
+
+        let isSquareInPath = isSquareInXPath.and(isSquareInYPath);
+        // check piece at position
+        let pieceAtPosition = this.value[i][j];
+        // if there's a piece at positon and isSquareInPath is true then, set isPathClear to false
+        isPathClear = Provable.if(
+          pieceAtPosition.greaterThan(Field(0)).and(isSquareInPath),
+          Bool(false),
+          isPathClear
+        );
+      }
+    }
+
+    return isPathClear;
   }
 
   checkValidBishopMove(
@@ -173,6 +219,18 @@ export class ChessBoard extends Struct({
     );
 
     // check if the Bishop path i.e. diagonal path is clear.
+    let pathIsClear = this.checkIfDiaognalPathClear(curX, curY, newX, newY);
+
+    // 3. validate if bishop can move at this place by either killing or moving to an empty place
+    // if there's a piece at newX and newY then it should be of different color and the bishop should be able to kill it
+    // if there's no piece at newX and newY then the bishop should be able to move there
+    let finalPlacementValid = this.checkFinalPlacement(newX, newY);
+
+    return newXInsideBoard
+      .and(newYInsideBoard)
+      .and(isSameDiff)
+      .and(pathIsClear)
+      .and(finalPlacementValid);
   }
 
   hash() {
