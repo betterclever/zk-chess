@@ -245,11 +245,23 @@ export class ChessBoard extends Struct({
       Bool(false)
     );
 
+    // 3. validate that the new position doesn't lead to a check
+    // check if the king is not in check after the move
+    let newBoard = this.changeCoordinate(curX, curY, newX, newY);
+    // check if own king is in check after the move
+    let currentPositionPiece = this.findPieceAtCoordinates(curX, curY);
+    let ownKingPiece = Provable.if(currentPositionPiece.greaterThan(Field(6)), Field(12), Field(6));
+    let isOwnKingInCheck = newBoard.checkIfKingInCheck(ownKingPiece);
+
+    // reset board
+    newBoard = this.changeCoordinate(newX, newY, curX, curY);
+
     return isAtSamePosition
       .not()
       .and(newXInsideBoard)
       .and(newYInsideBoard)
-      .and(isDiffAtMostOne);
+      .and(isDiffAtMostOne)
+      .and(isOwnKingInCheck.not());
   }
 
   checkValidRookMove(
@@ -496,7 +508,10 @@ export class ChessBoard extends Struct({
     newX: UInt32,
     newY: UInt32
   ) {
+
     let validRookMove = this.checkValidRookMove(currentX, currentY, newX, newY);
+
+    Provable.log('checking valid rook move', validRookMove);
 
     let validBishopMove = this.checkValidBishopMove(
       currentX,
@@ -504,6 +519,8 @@ export class ChessBoard extends Struct({
       newX,
       newY
     );
+
+    Provable.log('checking valid bishop move', validBishopMove);
 
     let validQueenMove = validRookMove.or(validBishopMove);
     let validKingMove = this.checkValidKingMove(currentX, currentY, newX, newY);
@@ -568,6 +585,16 @@ export class ChessBoard extends Struct({
       Bool(true)
     );
 
+    // check if the king is not in check after the move
+    let newBoard = this.changeCoordinate(currentX, currentY, newX, newY);
+    // check if own king is in check after the move
+    let ownKingPiece = Provable.if(currentPositionPiece.greaterThan(Field(6)), Field(12), Field(6));
+    let isOwnKingInCheck = newBoard.checkIfKingInCheck(ownKingPiece);
+
+    // reset board
+    newBoard = this.changeCoordinate(newX, newY, currentX, currentY);
+    
+
     Provable.log('validRookMove', validRookMove);
     Provable.log('validBishopMove', validBishopMove);
     Provable.log('validQueenMove', validQueenMove);
@@ -583,7 +610,8 @@ export class ChessBoard extends Struct({
       .and(isRookSupposedToMoveAndIsValid)
       .and(isBishopSupposedToMoveAndIsValid)
       .and(isKnightSupposedToMoveAndIsValid)
-      .and(isQueenSupposedToMoveAndIsValid);
+      .and(isQueenSupposedToMoveAndIsValid)
+      .and(isOwnKingInCheck.not());
   }
 
   // king is in check if any of the pieces can kill in the current board position
@@ -839,6 +867,7 @@ export default class ChessZkApp extends SmartContract {
   @state(PublicKey) player2 = State<PublicKey>();
   @state(Bool) turn = State<Bool>();
   @state(Bool) isGameOver = State<Bool>();
+  @state(PublicKey) winner = State<PublicKey>();
 
   init() {
     super.init();
@@ -950,12 +979,18 @@ export default class ChessZkApp extends SmartContract {
       newY
     );
 
+    // validate if there's a checkmate in the new board
+    let otherPersonKing = Provable.if(player1Turn, Field(12), Field(6));
+    let isCheckMate = newBoard.checkIfKingInCheckMate(otherPersonKing);
+
+    // if checkmate then set isGameOver to true
+    this.isGameOver.set(isCheckMate);
+    let winner = Provable.if(player1Turn, player1, player2);
+
+    this.winner.set(winner);
+
     // update the hash
     this.chessHash.set(newBoard.hash());
     this.turn.set(this.turn.get().not());
-
-    // check if the move is valid
-    // update the board
-    // update the hash
   }
 }

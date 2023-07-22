@@ -154,7 +154,8 @@ describe('Chess', () => {
           gamePlayer2
         );
       });
-      let res = await txn3.prove();
+      
+      await txn3.prove();
       await txn3.sign([senderKey]).send();
     } catch (err: any) {
       console.log(err.message);
